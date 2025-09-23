@@ -18,12 +18,19 @@ This approach is for users who want a simple, copy-and-paste solution without ne
 2.  **Customize (Optional)**: Open the chosen `user-data` file in a text editor and make any necessary changes, such as updating the `hostname` or adding your personal SSH public keys.
 3.  **Flash the Image**: Use the modified `user-data` file with the Raspberry Pi Imager.
 
-### Flashing with Raspberry Pi Imager
+## Flashing the Image & Booting the Pi
 
-1.  Choose your desired OS (e.g., Ubuntu Server 22.04.3 LTS 64-bit).
-2.  Choose your SD Card.
-3.  Click "Next" -> "Edit settings".
-4.  Under the "User-config" tab, check "Use custom user-config file" and select the `user-data` file from this directory.
-5.  Click "Save", then "Write" to flash the card.
+The generated `user-data` file can be used with the **Raspberry Pi Imager**:
+
+![Raspberry Pi Imager](../assets/rpi-imager.png)
+
+1.  Choose your desired Raspberry Pi Device
+2.  Choose your desired OS (e.g., Ubuntu Server 22.04.3 LTS 64-bit).
+3.  Choose your SD Card in Storage
+4.  Click "Next" -> "Yes" (we don't care what settings it applies right now, just need system-boot available).
+5.  Flash the Drive
+6.  When finished, pull the SD card out and put it back in so it mounts system-data
+7.  Overwrite the existing user-data file with the latest from the generator
+8.  Pop into the RPI and let it do its thing!
 
 When the Raspberry Pi boots with this SD card, `cloud-init` will automatically apply the settings defined in the `user-data` file.
