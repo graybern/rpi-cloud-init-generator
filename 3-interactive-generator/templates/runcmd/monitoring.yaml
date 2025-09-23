@@ -1,0 +1,8 @@
+- mkdir -p /opt/monitoring
+- [
+    bash,
+    -c,
+    "curl -fsSL https://raw.githubusercontent.com/prometheus/node_exporter/master/examples/systemd/node_exporter.service > /etc/systemd/system/node_exporter.service",
+  ]
+- systemctl enable node_exporter
+- systemctl start node_exporter

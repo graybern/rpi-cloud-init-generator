@@ -1,0 +1,40 @@
+- [bash, -lc, "python3 -m venv /opt/venvs/tools"]
+- [bash, -lc, "/opt/venvs/tools/bin/python -m pip install --upgrade pip"]
+- [
+    bash,
+    -lc,
+    "/opt/venvs/tools/bin/python -m pip install --upgrade blinkstick pyusb paho-mqtt",
+  ]
+- [
+    bash,
+    -lc,
+    "sed -i 's/collections\\\\.Callable/collections.abc.Callable/g' /opt/venvs/tools/lib/python3.*/site-packages/blinkstick/blinkstick.py || true",
+  ]
+- [
+    bash,
+    -lc,
+    "chmod -R a+rX /opt/venvs/tools && chmod 755 /opt/venvs/tools/bin/blinkstick",
+  ]
+- [bash, -lc, "sed -i 's/\\r$//' /opt/venvs/tools/bin/blinkstick || true"]
+- [
+    bash,
+    -lc,
+    "sed -i '1s|^#!.*|#!/opt/venvs/tools/bin/python|' /opt/venvs/tools/bin/blinkstick",
+  ]
+- [
+    bash,
+    -lc,
+    "ln -sf /opt/venvs/tools/bin/blinkstick /usr/local/bin/blinkstick || true",
+  ]
+- [
+    bash,
+    -lc,
+    "printf '%s\\n' 'SUBSYSTEM==\"usb\", ATTR{idVendor}==\"20a0\", MODE=\"0666\"' > /etc/udev/rules.d/85-blinkstick.rules",
+  ]
+- [bash, -lc, "udevadm control --reload-rules || true"]
+- [bash, -lc, "udevadm trigger || true"]
+- [
+    bash,
+    -lc,
+    "/opt/venvs/tools/bin/pip show blinkstick | sed -n 's/^Version: /blinkstick v/p' || true",
+  ]

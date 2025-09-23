@@ -1,0 +1,5 @@
+- kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+- kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml -n argocd
+- kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
+- kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"server.insecure":"true"}}'
+- kubectl -n argocd rollout restart deploy/argocd-server

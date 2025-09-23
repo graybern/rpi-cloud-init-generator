@@ -1,0 +1,166 @@
+#cloud-config
+hostname: "asdf" # Set the desired hostname
+manage_etc_hosts: true # Ensure /etc/hosts is managed
+disable_root: true # Disable root login
+ssh_pwauth: false # Enable or disable SSH password authentication
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    groups: users,adm,dialout,audio,netdev,video,plugdev,gpio,spi,i2c,render
+    ssh_authorized_keys:
+      - asdf
+
+timezone: Etc/UTC
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+
+packages:
+  # Basics
+  - curl # http client
+  - git # git client
+  # Networking troubleshooting & testing tools
+  - bind9-dnsutils # for dig
+  - iperf3 # for network performance testing
+  - nmap # for network scanning
+  - tcpdump # for packet capture & analysis
+  # Performance / Health monitoring
+  - htop # interactive process viewer
+  - iftop # network bandwidth monitoring
+  - stress-ng # CPU/RAM/IO stress testing
+  # MQTT & BlinkStick (USB RGB LED controller) dependencies
+  - python3-venv # for python venv (blinkstick)
+  - mosquitto # MQTT broker
+  - mosquitto-clients # mqtt pub/sub cli tools
+  - libusb-1.0-0 # for blinkstick
+
+apt:
+  conf: |
+    Acquire {
+      Check-Date "false";
+    };
+
+write_files:
+
+  - path: /usr/local/sbin/provision-report.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+  
+      # ---------- Console colors ----------
+      if [ -t 1 ]; then
+        RED=$(tput setaf 1); GREEN=$(tput setaf 2); YEL=$(tput setaf 3); BOLD=$(tput bold); RESET=$(tput sgr0)
+      else
+        RED=; GREEN=; YEL=; BOLD=; RESET=
+      fi
+      OK="${GREEN}✔${RESET}"; ERR="${RED}✖${RESET}"; WARN="${YEL}⚠${RESET}"
+  
+      # ---------- Report plumbing ----------
+      REPORT=/run/provision-report.txt
+      : > "$REPORT"
+      log(){ printf "%b\n" "$1" | tee -a "$REPORT" >/dev/null; }
+  
+      ok=true
+      errc=0
+      warnc=0
+  
+      check_service_active () {
+        local unit="$1" label="$2"
+        if systemctl is-active --quiet "$unit"; then
+          log "${OK} ${BOLD}${label}${RESET} is active"
+          bs_blink green 1
+        else
+          log "${ERR} ${BOLD}${label}${RESET} failed (see: journalctl -u ${unit} -b | tail -n 50)"
+          ok=false; errc=$((errc+1))
+          bs_blink red 1
+        fi
+      }
+  
+      # ---------- Checks ----------
+      # Source BlinkStick helpers
+      [ -f /usr/local/sbin/blinkstick-helpers.sh ] && source /usr/local/sbin/blinkstick-helpers.sh
+  
+      # k3s agent/server
+      wait_unit(){ u=$1; t=${2:-20}; while [ $t -gt 0 ]; do systemctl list-units --all --type=service --no-legend | grep -q "\b$u\b" && return 0; sleep 1; t=$((t-1)); done; return 1; }
+      if wait_unit k3s-agent.service 30; then
+        check_service_active k3s-agent "k3s-agent"
+      elif wait_unit k3s.service 30; then
+        check_service_active k3s "k3s (server)"
+      else
+        log "${ERR} k3s unit not found"; ok=false; errc=$((errc+1)); bs_blink red 1
+      fi
+  
+      # Twingate
+      if systemctl list-unit-files --type=service --no-legend | grep -q '^twingate-connector\.service'; then
+        check_service_active twingate-connector "twingate-connector"
+      else
+        log "${WARN} Twingate not installed"
+        warnc=$((warnc+1))
+      fi
+  
+      # ---------- Overall status ----------
+      ci_status="$(cloud-init status 2>/dev/null || true)"
+      case "$ci_status" in
+        *error*) ci_state="error" ;;
+        *done*)  ci_state="done"  ;;
+        *)       ci_state="unknown" ;;
+      esac
+  
+      # Compose and print the report
+      {
+        echo
+        echo "==== Provisioning summary on $(hostname) @ $(date -Is) ===="
+        echo "cloud-init status: ${ci_status}"
+        echo "errors: ${errc}, warnings: ${warnc}"
+        cat "$REPORT"
+        echo "==========================================================="
+      } | tee -a /var/log/cloud-init-output.log | tee /etc/motd | tee /dev/console >/dev/null
+  
+      # ---------- Final LED state machine ----------
+      if [ "$errc" -gt 0 ]; then
+        if cloud-init status 2>/dev/null | grep -q 'error'; then
+          bs_solid red
+          exit 0
+        fi
+        nohup bash -c '
+          source /usr/local/sbin/blinkstick-helpers.sh
+          while true; do bs_blink yellow 3; sleep 1; bs_blink red '"$errc"'; sleep 2; done
+        ' >/dev/null 2>&1 &
+      else
+        if cloud-init status 2>/dev/null | grep -q 'error'; then
+          pid=$(bs_pulse red loop bg); sleep 60; bs_stop "$pid"
+        else
+          pid=$(bs_pulse green loop bg); sleep 60; bs_stop "$pid"
+        fi
+      fi
+
+runcmd:
+  #=========================================
+  # Base configuration
+  #=========================================
+  - [ bash, -lc, "set -euxo pipefail" ]
+  - [ bash, -c, "echo 'Starting setup...' > /root/setup-started" ]
+
+  #=========================================
+  # K3s configuration
+  #=========================================
+  - [bash, -lc, "curl -sfL https://get.k3s.io | K3S_URL=https://server:6443 K3S_TOKEN=asdfasdf sh -"]
+
+  #=========================================
+  # Reporting setup status
+  #=========================================
+  - [bash, -lc, "/usr/local/sbin/provision-report.sh"]
+
+  #=========================================
+  # Finalization
+  #=========================================
+  - [ bash, -c, "echo 'Setup complete.' > /root/setup-complete" ]
+
+# This is static; dynamic status is printed by the report script above.
+final_message: "cloud-init complete. See console output / MOTD for provisioning status."

@@ -1,0 +1,294 @@
+#cloud-config
+hostname: "<HOSTNAME>" # set hostname
+manage_etc_hosts: true # If false, you may need to set /etc/hosts manually. This ensures localhost and the hostname are present in /etc/hosts.
+disable_root: true # Disable root login
+ssh_pwauth: true # SSH: keys only
+
+users:
+  - name: "ubuntu"
+    groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
+    shell: /bin/bash
+    lock_passwd: false
+    passwd: "<SALT&HASHED_PASSWORD>"
+    ssh_authorized_keys:
+      - "<SSH_KEY>"
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+timezone: Etc/UTC
+keyboard:
+  model: pc105
+  layout: "us"
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+packages:
+  # Basics
+  - avahi-daemon # mDNS for local network service discovery
+  - curl # http client
+  - ca-certificates # for https
+  - gnupg # for apt keyring management
+  - lsb-release # for distro detection
+  - git # git client
+  # Networking troubleshooting & testing tools
+  - bind9-dnsutils # for dig
+  - iperf3 # for network performance testing
+  - nmap # for network scanning
+  - tcpdump # for packet capture & analysis
+  # Performance / Health monitoring
+  - htop # interactive process viewer
+  - iftop # network bandwidth monitoring
+  - stress-ng # CPU/RAM/IO stress testing
+  # MQTT & BlinkStick (USB RGB LED controller) dependencies
+  - python3-venv # for python venv (blinkstick)
+  - mosquitto # MQTT broker
+  - mosquitto-clients # mqtt pub/sub cli tools
+  - libusb-1.0-0 # for blinkstick
+
+apt:
+  conf: |
+    Acquire {
+      Check-Date "false";
+    };
+
+write_files:
+  # Provisioning report script (runs at end of runcmd)
+  - path: /usr/local/sbin/provision-report.sh
+    owner: root:root
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      # ---------- Console colors ----------
+      if [ -t 1 ]; then
+        RED=$(tput setaf 1); GREEN=$(tput setaf 2); YEL=$(tput setaf 3); BOLD=$(tput bold); RESET=$(tput sgr0)
+      else
+        RED=; GREEN=; YEL=; BOLD=; RESET=
+      fi
+      OK="${GREEN}✔${RESET}"; ERR="${RED}✖${RESET}"; WARN="${YEL}⚠${RESET}"
+
+      # ---------- BlinkStick helpers ----------
+      BS="/opt/venvs/tools/bin/blinkstick"
+      bs()        { "$BS" "$@" >/dev/null 2>&1 || true; }
+      bs_on()     { [ -x "$BS" ] || return 0; bs --set-color "$1"; }
+      bs_off()    { [ -x "$BS" ] || return 0; bs --turn-off; }
+      bs_blink()  { [ -x "$BS" ] || return 0; local c=$1 n=${2:-1} on=${3:-0.25} off=${4:-0.25}; for _ in $(seq 1 "$n"); do bs_on "$c"; sleep "$on"; bs_off; sleep "$off"; done; }
+      bs_solid()  { [ -x "$BS" ] || return 0; bs_on "$1"; }
+
+      # Pulse: bs_pulse <color> [repeats|loop] [bg]
+      # - repeats: integer number of pulses; use "loop"/"infinite"/"inf"/"0" to pulse forever
+      # - bg: if present (any value), run in background and print the PID
+      bs_pulse() {
+        [ -x "$BS" ] || return 0
+        local color="${1:-green}"
+        local repeats="${2:-1}"
+        local bg="${3:-}"
+
+        if [[ "$repeats" =~ ^(loop|infinite|inf|0)$ ]]; then
+          if [[ -n "$bg" ]]; then
+            while :; do "$BS" --pulse "$color" --repeats 1 >/dev/null 2>&1 || true; done & echo $!
+          else
+            while :; do "$BS" --pulse "$color" --repeats 1 >/dev/null 2>&1 || true; done
+          fi
+        else
+          if [[ -n "$bg" ]]; then
+            "$BS" --pulse "$color" --repeats "$repeats" >/dev/null 2>&1 & echo $!
+          else
+            "$BS" --pulse "$color" --repeats "$repeats" >/dev/null 2>&1
+          fi
+        fi
+      }
+
+      # Optional helper to stop a background pulse by PID (or all pulses)
+      bs_stop() { local pid="${1:-}"; if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; else pkill -f 'blinkstick.*--pulse' 2>/dev/null || true; fi; }
+
+      # Example usage:
+      # bs_solid red
+      # bs_blink green 3
+      # bs_pulse blue 5
+      # pid=$(bs_pulse yellow loop bg); sleep 60; bs_stop "$pid"
+      # bs_off
+
+      # ---------- Report plumbing ----------
+      REPORT=/run/provision-report.txt
+      : > "$REPORT"
+      log(){ printf "%b\n" "$1" | tee -a "$REPORT" >/dev/null; }
+
+      ok=true
+      errc=0
+      warnc=0
+
+      check_service_active () {
+        local unit="$1" label="$2"
+        if systemctl is-active --quiet "$unit"; then
+          log "${OK} ${BOLD}${label}${RESET} is active"
+          bs_blink green 1
+        else
+          log "${ERR} ${BOLD}${label}${RESET} failed (see: journalctl -u ${unit} -b | tail -n 50)"
+          ok=false; errc=$((errc+1))
+          bs_blink red 1
+        fi
+      }
+
+      # ---------- Checks ----------
+      # k3s agent/server
+      wait_unit(){ u=$1; t=${2:-20}; while [ $t -gt 0 ]; do systemctl list-units --all --type=service --no-legend | grep -q "\b$u\b" && return 0; sleep 1; t=$((t-1)); done; return 1; }
+      if wait_unit k3s-agent.service 30; then
+        check_service_active k3s-agent "k3s-agent"
+      elif wait_unit k3s.service 30; then
+        check_service_active k3s "k3s (server)"
+      else
+        log "${ERR} k3s unit not found"; ok=false; errc=$((errc+1)); bs_blink red 1
+      fi
+
+      # Twingate
+      if systemctl list-unit-files --type=service --no-legend | grep -q '^twingate-connector\.service'; then
+        check_service_active twingate-connector "twingate-connector"
+      else
+        log "${WARN} Twingate not installed"
+        warnc=$((warnc+1))
+        # no LED for warn
+      fi
+
+      # ---------- Overall status ----------
+      ci_status="$(cloud-init status 2>/dev/null || true)"
+      case "$ci_status" in
+        *error*) ci_state="error" ;;
+        *done*)  ci_state="done"  ;;
+        *)       ci_state="unknown" ;;
+      esac
+
+      # Compose and print the report
+      {
+        echo
+        echo "==== Provisioning summary on $(hostname) @ $(date -Is) ===="
+        echo "cloud-init status: ${ci_status}"
+        echo "errors: ${errc}, warnings: ${warnc}"
+        cat "$REPORT"
+        echo "==========================================================="
+      } | tee -a /var/log/cloud-init-output.log | tee /etc/motd | tee /dev/console >/dev/null
+
+      # Copy cloud-init log to user home
+      if id -u ubuntu >/dev/null 2>&1; then
+        cp -f /var/log/cloud-init-output.log /home/ubuntu/cloud-init-output.log || true
+        chown ubuntu: /home/ubuntu/cloud-init-output.log || true
+        chmod 640 /home/ubuntu/cloud-init-output.log || true
+      fi
+
+      # ---------- Final LED state machine ----------
+      # 1) If we saw any check errors -> show partial failure pattern (regardless of cloud-init state)
+      if [ "$errc" -gt 0 ]; then
+        # If cloud-init itself failed overall, show solid red (hard fail)
+        if cloud-init status 2>/dev/null | grep -q 'error'; then
+          bs_solid red
+          exit 0
+        fi
+        # Otherwise, partial failure pattern: yellow x3, then red x<errc>, loop
+        nohup bash -c '
+          BS="/opt/venvs/tools/bin/blinkstick"
+          b(){ "$BS" "$@" >/dev/null 2>&1 || true; }
+          on(){ b --set-color "$1"; }
+          off(){ b --turn-off; }
+          blink(){ c=$1; n=$2; for _ in $(seq 1 "$n"); do on "$c"; sleep 0.25; off; sleep 0.25; done; }
+          while true; do blink yellow 3; sleep 1; blink red '"$errc"'; sleep 2; done
+        ' >/dev/null 2>&1 &
+        exit 0
+      fi
+
+      # 2) No check errors: honor cloud-init global status
+      if cloud-init status 2>/dev/null | grep -q 'error'; then
+        pid=$(bs_pulse red loop bg); sleep 60; bs_stop "$pid"
+      else
+        pid=$(bs_pulse green loop bg); sleep 60; bs_stop "$pid"
+      fi
+        pid=$(bs_pulse orange loop bg); sleep 60; bs_stop "$pid"
+        exit 0
+      fi
+
+runcmd:
+  # Use bash -lc for portability (dash doesn't support set -o pipefail)
+  - [bash, -lc, "set -euxo pipefail"]
+
+  # Create the venv (idempotent) and get pip up to date
+  - [bash, -lc, "python3 -m venv /opt/venvs/tools"]
+  - [bash, -lc, "/opt/venvs/tools/bin/python -m pip install --upgrade pip"]
+
+  # Install BlinkStick + deps into the venv
+  # (pyusb is required on Linux; paho-mqtt is your CLI helper)
+  - [
+      bash,
+      -lc,
+      "/opt/venvs/tools/bin/python -m pip install --upgrade blinkstick pyusb paho-mqtt",
+    ]
+
+  # Fix for Python 3.10+ where collections.Callable was moved to collections.abc.Callable
+  - [
+      bash,
+      -lc,
+      "sed -i 's/collections\\.Callable/collections.abc.Callable/g' /opt/venvs/tools/lib/python3.*/site-packages/blinkstick/blinkstick.py || true",
+    ]
+
+  # Make CLI usable system-wide
+  - [
+      bash,
+      -lc,
+      "chmod -R a+rX /opt/venvs/tools && chmod 755 /opt/venvs/tools/bin/blinkstick",
+    ]
+  - [bash, -lc, 'sed -i "s/\r$//" /opt/venvs/tools/bin/blinkstick || true']
+  - [
+      bash,
+      -lc,
+      'sed -i "1s|^#!.*|#!/opt/venvs/tools/bin/python|" /opt/venvs/tools/bin/blinkstick',
+    ]
+  - [
+      bash,
+      -lc,
+      "ln -sf /opt/venvs/tools/bin/blinkstick /usr/local/bin/blinkstick || true",
+    ]
+
+  # Udev rule so you don’t need sudo to access the device
+  - [
+      bash,
+      -lc,
+      'printf "%s\n" "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"20a0\", MODE=\"0666\"" > /etc/udev/rules.d/85-blinkstick.rules',
+    ]
+  - [bash, -lc, "udevadm control --reload-rules || true"]
+  - [bash, -lc, "udevadm trigger || true"]
+
+  # Version banner (no --version flag in this CLI)
+  - [
+      bash,
+      -lc,
+      '/opt/venvs/tools/bin/pip show blinkstick | sed -n "s/^Version: /blinkstick v/p" || true',
+    ]
+
+  # Disable swap for kube
+  - [bash, -lc, 'sed -i.bak "/\sswap\s/ s/^/#/" /etc/fstab']
+  - [bash, -lc, "swapoff -a"]
+
+  # Install k3s (role: worker)
+  - [
+      bash,
+      -lc,
+      "curl -sfL https://get.k3s.io | K3S_URL=<K3S_URL> K3S_TOKEN=<K3S_TOKEN> sh -",
+    ]
+
+  # Twingate (optional)
+  - >
+    curl "https://binaries.twingate.com/connector/setup.sh" | sudo
+    TWINGATE_NETWORK="<TWINGATE_NETWORK>"
+    TWINGATE_ACCESS_TOKEN="<TWINGATE_ACCESS_TOKEN>"
+    TWINGATE_REFRESH_TOKEN="<TWINGATE_REFRESH_TOKEN>"
+    TWINGATE_LOG_ANALYTICS="v2"
+    TWINGATE_LABEL_DEPLOYED_BY="cloud-init"
+    TWINGATE_LABEL_HOSTNAME="`hostname`"
+    bash
+  # Enable & start Twingate (if enabled)
+  - systemctl enable --now twingate-connector
+
+  # Final status
+  - [bash, -lc, "/usr/local/sbin/provision-report.sh"]
+
+# This is static; dynamic status is printed by the report script above.
+final_message: "cloud-init complete. See console output / MOTD for provisioning status."

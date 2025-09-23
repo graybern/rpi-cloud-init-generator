@@ -1,0 +1,45 @@
+- path: /usr/local/sbin/blinkstick-helpers.sh
+  owner: root:root
+  permissions: "0755"
+  content: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+    # ---------- BlinkStick helpers ----------
+    BS="/opt/venvs/tools/bin/blinkstick"
+    bs()        { "$BS" "$@" >/dev/null 2>&1 || true; }
+    bs_on()     { [ -x "$BS" ] || return 0; bs --set-color "$1"; }
+    bs_off()    { [ -x "$BS" ] || return 0; bs --turn-off; }
+    bs_blink()  { [ -x "$BS" ] || return 0; local c=$1 n=${2:-1} on=${3:-0.25} off=${4:-0.25}; for _ in $(seq 1 "$n"); do bs_on "$c"; sleep "$on"; bs_off; sleep "$off"; done; }
+    bs_solid()  { [ -x "$BS" ] || return 0; bs_on "$1"; }
+
+    # Pulse: bs_pulse <color> [repeats|loop] [bg]
+    bs_pulse() {
+      [ -x "$BS" ] || return 0
+      local color="${1:-green}"
+      local repeats="${2:-1}"
+      local bg="${3:-}"
+
+      if [[ "$repeats" =~ ^(loop|infinite|inf|0)$ ]]; then
+        if [[ -n "$bg" ]]; then
+          while :; do "$BS" --pulse "$color" --repeats 1 >/dev/null 2>&1 || true; done & echo $!
+        else
+          while :; do "$BS" --pulse "$color" --repeats 1 >/dev/null 2>&1 || true; done
+        fi
+      else
+        if [[ -n "$bg" ]]; then
+          "$BS" --pulse "$color" --repeats "$repeats" >/dev/null 2>&1 & echo $!
+        else
+          "$BS" --pulse "$color" --repeats "$repeats" >/dev/null 2>&1
+        fi
+      fi
+    }
+
+    bs_stop() { 
+      local pid="${1:-}"
+      if [[ -n "$pid" ]]; then 
+        kill "$pid" 2>/dev/null || true
+      else 
+        pkill -f 'blinkstick.*--pulse' 2>/dev/null || true
+      fi
+    }
