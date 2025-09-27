@@ -1,0 +1,16 @@
+{
+  "name": "RPI Cloud-Init Generator",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.shellcheck",
+        "formulahendry.terminal",
+        "github.copilot",
+        "hashicorp.terraform",
+        "gruntfuggly.todo-tree"
+      ]
+    }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y shellcheck"
+}
