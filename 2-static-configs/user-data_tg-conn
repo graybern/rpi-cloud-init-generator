@@ -1,0 +1,63 @@
+#cloud-config
+hostname: "asdf" # Set the desired hostname
+manage_etc_hosts: true # Ensure /etc/hosts is managed
+disable_root: true # Disable root login
+ssh_pwauth: false # Enable or disable SSH password authentication
+
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    groups: users,adm,dialout,audio,netdev,video,plugdev,gpio,spi,i2c,render
+    ssh_authorized_keys:
+      - asdf
+
+timezone: Etc/UTC
+
+package_update: true
+package_upgrade: true
+package_reboot_if_required: true
+
+packages:
+  # Basics
+  - curl # http client
+  - git # git client
+  # Networking troubleshooting & testing tools
+  - bind9-dnsutils # for dig
+
+apt:
+  conf: |
+    Acquire {
+      Check-Date "false";
+    };
+
+runcmd:
+  #=========================================
+  # Base configuration
+  #=========================================
+  - [bash, -lc, "set -euxo pipefail"]
+  - [bash, -c, "echo 'Starting setup...' > /root/setup-started"]
+
+  #=========================================
+  # Twingate configuration
+  #=========================================
+  - >
+    curl "https://binaries.twingate.com/connector/setup.sh" | sudo 
+    TWINGATE_ACCESS_TOKEN="asdf" 
+    TWINGATE_REFRESH_TOKEN="asdf" 
+    TWINGATE_LOG_ANALYTICS="v2" 
+    TWINGATE_NETWORK="asdf" 
+    TWINGATE_LABEL_DEPLOYED_BY="cloud-init" 
+    TWINGATE_LABEL_HOSTNAME="`hostname`"
+    bash
+  # Ensure the connector service is enabled to persist across reboots
+  - systemctl enable --now twingate-connector
+
+  #=========================================
+  # Finalization
+  #=========================================
+  - [bash, -c, "echo 'Setup complete.' > /root/setup-complete"]
+
+# This is static; dynamic status is printed by the report script above.
+final_message: "cloud-init complete. See console output / MOTD for provisioning status."
