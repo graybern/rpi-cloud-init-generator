@@ -1,8 +1,28 @@
-- mkdir -p /opt/monitoring
+# Set base URL for latest node_exporter release
 - [
     bash,
     -c,
-    "curl -fsSL https://raw.githubusercontent.com/prometheus/node_exporter/master/examples/systemd/node_exporter.service > /etc/systemd/system/node_exporter.service",
+    "BASE='https://github.com/prometheus/node_exporter/releases/latest'",
   ]
-- systemctl enable node_exporter
-- systemctl start node_exporter
+# Find the correct tarball name for ARM64
+- [
+    bash,
+    -c,
+    "ASSET=$(curl -fsSL $BASE/download/sha256sums.txt | awk '/linux-arm64\\.tar\\.gz/ {print $2; exit}')",
+  ]
+# Extract directory name from tarball name
+- [bash, -c, 'DIR="${ASSET%.tar.gz}"']
+# Download the tarball
+- [bash, -c, "curl -fL -o $ASSET $BASE/download/$ASSET"]
+# Extract the tarball
+- [bash, -c, "tar xvfz $ASSET"]
+# Move the binary to /usr/local/bin (system-wide executables)
+- [bash, -c, "mv $DIR/node_exporter /usr/local/bin/"]
+# Create a system user for node_exporter (no login shell)
+- [bash, -c, "useradd -rs /bin/false node_exporter || true"]
+# Reload systemd to recognize new/changed service files
+- [bash, -c, "systemctl daemon-reload"]
+# Enable node_exporter to start at boot
+- [bash, -c, "systemctl enable node_exporter"]
+# Start node_exporter service now
+- [bash, -c, "systemctl start node_exporter"]

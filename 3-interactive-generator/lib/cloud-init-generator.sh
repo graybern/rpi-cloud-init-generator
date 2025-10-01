@@ -21,6 +21,11 @@ generate_cloud_init() {
         runcmd+=$'\n'
         write_files+=$(get_blinkstick_write_files)$'\n'
     fi
+    
+    if [[ "${INSTALL_MONITORING:-N}" =~ ^[Yy]$ ]]; then
+        write_files+=$(get_monitoring_write_files)$'\n'
+    fi
+    
     # Always include reporting write_files
     write_files+=$'\n' # Add a newline to separate file entries
     write_files+=$(get_reporting_write_files)$'\n'

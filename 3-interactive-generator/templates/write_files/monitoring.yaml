@@ -1,0 +1,19 @@
+- path: /etc/systemd/system/node_exporter.service
+  owner: root:root
+  permissions: "0644"
+  content: |
+    [Unit]
+    Description=Node Exporter
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    User=node_exporter
+    Group=node_exporter
+    Type=simple
+    ExecStart=/usr/local/bin/node_exporter
+    Restart=always
+    RestartSec=3
+
+    [Install]
+    WantedBy=multi-user.target
