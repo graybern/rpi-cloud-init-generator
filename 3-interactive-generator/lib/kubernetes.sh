@@ -22,7 +22,7 @@ setup_kubernetes() {
         "worker")
             K3S_SERVER_URL=$(ask "K3s server URL (e.g., https://server:6443)")
             K3S_TOKEN=$(ask "K3s token")
-            K3S_CMD="curl -sfL https://get.k3s.io | K3S_URL=$K3S_SERVER_URL K3S_TOKEN=$K3S_TOKEN sh -"
+            K3S_CMD="curl -sfL https://get.k3s.io | K3S_TOKEN=$K3S_TOKEN sh -s - agent --server $K3S_SERVER_URL"
             ;;
     esac
 }

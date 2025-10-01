@@ -2,9 +2,7 @@
 
 setup_monitoring() {
     INSTALL_MONITORING="N"
-    if [[ "$ROLE" == "first-control" ]]; then
-        INSTALL_MONITORING=$(ask "Install node exporter for Prometheus monitoring? (y/N)" "N")
-    fi
+    INSTALL_MONITORING=$(ask "Install node exporter for Prometheus monitoring? (y/N)" "N")
 }
 
 get_monitoring_runcmd() {
