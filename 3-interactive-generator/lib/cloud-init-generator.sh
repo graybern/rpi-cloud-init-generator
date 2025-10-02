@@ -18,14 +18,31 @@ generate_cloud_init() {
 
     # --- Build write_files Content ---
     if [[ "${INSTALL_BLINKSTICK:-N}" =~ ^[Yy]$ ]]; then
-        runcmd+=$'\n'
+        write_files+=$'\n'
         write_files+=$(get_blinkstick_write_files)$'\n'
     fi
-    
+
     if [[ "${INSTALL_MONITORING:-N}" =~ ^[Yy]$ ]]; then
+        write_files+=$'\n'
         write_files+=$(get_monitoring_write_files)$'\n'
     fi
+
+    # Add provision selections file
+    write_files+=$'\n  - path: /etc/provision-selections.env\n    owner: root:root\n    permissions: "0644"\n    content: |\n'
     
+    # Evaluate each selection at generation time
+    local k3s_selected=0; [[ "${INSTALL_K3S:-N}" =~ ^[Yy]$ ]] && k3s_selected=1
+    local argocd_selected=0; [[ "${INSTALL_ARGOCD:-N}" =~ ^[Yy]$ ]] && argocd_selected=1
+    local twingate_selected=0; [[ "${INSTALL_TWINGATE:-N}" =~ ^[Yy]$ ]] && twingate_selected=1
+    local monitoring_selected=0; [[ "${INSTALL_MONITORING:-N}" =~ ^[Yy]$ ]] && monitoring_selected=1
+    local blinkstick_selected=0; [[ "${INSTALL_BLINKSTICK:-N}" =~ ^[Yy]$ ]] && blinkstick_selected=1
+    
+    write_files+="      SELECTED_K3S=$k3s_selected"$'\n'
+    write_files+="      SELECTED_ARGOCD=$argocd_selected"$'\n'
+    write_files+="      SELECTED_TWINGATE=$twingate_selected"$'\n'
+    write_files+="      SELECTED_MONITORING=$monitoring_selected"$'\n'
+    write_files+="      SELECTED_BLINKSTICK=$blinkstick_selected"$'\n'
+
     # Always include reporting write_files
     write_files+=$'\n' # Add a newline to separate file entries
     write_files+=$(get_reporting_write_files)$'\n'

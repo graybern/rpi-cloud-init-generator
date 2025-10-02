@@ -1,1 +1,5 @@
-- [bash, -lc, "/usr/local/sbin/provision-report.sh"]
+- [
+    bash,
+    -lc,
+    "[ -f /etc/provision-selections.env ] && source /etc/provision-selections.env; /usr/local/sbin/provision-report.sh",
+  ]

@@ -56,15 +56,35 @@ fi
 # Kubernetes setup
 INSTALL_K3S=$(ask $'\n'"Install Kubernetes (k3s)? (y/N)" "N")
 if [[ "$INSTALL_K3S" =~ ^[Yy]$ ]]; then
+    INSTALL_K3S="Y"; export INSTALL_K3S
     setup_kubernetes
     setup_argocd
+else
+    INSTALL_K3S="N"; export INSTALL_K3S
+    INSTALL_ARGOCD="N"; export INSTALL_ARGOCD
 fi
 
 # Optional components
 setup_blinkstick
-setup_monitoring
-setup_twingate
+if [[ "$INSTALL_BLINKSTICK" =~ ^[Yy]$ ]]; then
+    INSTALL_BLINKSTICK="Y"; export INSTALL_BLINKSTICK
+else
+    INSTALL_BLINKSTICK="N"; export INSTALL_BLINKSTICK
+fi
 
+setup_monitoring
+if [[ "$INSTALL_MONITORING" =~ ^[Yy]$ ]]; then
+    INSTALL_MONITORING="Y"; export INSTALL_MONITORING
+else
+    INSTALL_MONITORING="N"; export INSTALL_MONITORING
+fi
+
+setup_twingate
+if [[ "$INSTALL_TWINGATE" =~ ^[Yy]$ ]]; then
+    INSTALL_TWINGATE="Y"; export INSTALL_TWINGATE
+else
+    INSTALL_TWINGATE="N"; export INSTALL_TWINGATE
+fi
 
 # Generate cloud-init configuration
 generate_cloud_init

@@ -22,6 +22,29 @@
     errc=0
     warnc=0
 
+      # ---------- Load selections ----------
+      # Source the selections file first
+      [ -f /etc/provision-selections.env ] && source /etc/provision-selections.env
+
+      # ---------- Selected components ----------
+      # Set defaults in case sourcing failed
+      SELECTED_K3S="${SELECTED_K3S:-0}"
+      SELECTED_ARGOCD="${SELECTED_ARGOCD:-0}"
+      SELECTED_TWINGATE="${SELECTED_TWINGATE:-0}"
+      SELECTED_MONITORING="${SELECTED_MONITORING:-0}"
+      SELECTED_BLINKSTICK="${SELECTED_BLINKSTICK:-0}"
+
+      # ---------- Checks ----------
+      [ -f /usr/local/sbin/blinkstick-helpers.sh ] && source /usr/local/sbin/blinkstick-helpers.sh    # Print selections
+    echo "Selected components:" | tee -a "$REPORT"
+    [[ "$SELECTED_K3S" == "1" ]] && echo "- k3s" | tee -a "$REPORT"
+    [[ "$SELECTED_ARGOCD" == "1" ]] && echo "- argocd" | tee -a "$REPORT"
+    [[ "$SELECTED_TWINGATE" == "1" ]] && echo "- twingate" | tee -a "$REPORT"
+    [[ "$SELECTED_MONITORING" == "1" ]] && echo "- monitoring" | tee -a "$REPORT"
+    [[ "$SELECTED_BLINKSTICK" == "1" ]] && echo "- blinkstick" | tee -a "$REPORT"
+    echo | tee -a "$REPORT"
+
+    # Helper to check and log service status
     check_service_active () {
       local unit="$1" label="$2"
       if systemctl is-active --quiet "$unit"; then
@@ -34,26 +57,49 @@
       fi
     }
 
-    # ---------- Checks ----------
-    # Source BlinkStick helpers
-    [ -f /usr/local/sbin/blinkstick-helpers.sh ] && source /usr/local/sbin/blinkstick-helpers.sh
-
-    # k3s agent/server
-    wait_unit(){ u=$1; t=${2:-20}; while [ $t -gt 0 ]; do systemctl list-units --all --type=service --no-legend | grep -q "\b$u\b" && return 0; sleep 1; t=$((t-1)); done; return 1; }
-    if wait_unit k3s-agent.service 30; then
-      check_service_active k3s-agent "k3s-agent"
-    elif wait_unit k3s.service 30; then
-      check_service_active k3s "k3s (server)"
-    else
-      log "${ERR} k3s unit not found"; ok=false; errc=$((errc+1)); bs_blink red 1
+    # Check each selected component
+    if [[ "$SELECTED_K3S" == "1" ]]; then
+      wait_unit(){ u=$1; t=${2:-20}; while [ $t -gt 0 ]; do systemctl list-units --all --type=service --no-legend | grep -q "\b$u\b" && return 0; sleep 1; t=$((t-1)); done; return 1; }
+      if wait_unit k3s-agent.service 30; then
+        check_service_active k3s-agent "k3s-agent"
+      elif wait_unit k3s.service 30; then
+        check_service_active k3s "k3s (server)"
+      else
+        log "${ERR} k3s unit not found"; ok=false; errc=$((errc+1)); bs_blink red 1
+      fi
     fi
 
-    # Twingate
-    if systemctl list-unit-files --type=service --no-legend | grep -q '^twingate-connector\.service'; then
-      check_service_active twingate-connector "twingate-connector"
-    else
-      log "${WARN} Twingate not installed"
-      warnc=$((warnc+1))
+    if [[ "$SELECTED_ARGOCD" == "1" ]]; then
+      if systemctl list-unit-files --type=service --no-legend | grep -q '^argocd-server\.service'; then
+        check_service_active argocd-server "argocd-server"
+      else
+        log "${WARN} ArgoCD not installed"; warnc=$((warnc+1))
+      fi
+    fi
+
+    if [[ "$SELECTED_TWINGATE" == "1" ]]; then
+      if systemctl list-unit-files --type=service --no-legend | grep -q '^twingate-connector\.service'; then
+        check_service_active twingate-connector "twingate-connector"
+      else
+        log "${WARN} Twingate not installed"; warnc=$((warnc+1))
+      fi
+    fi
+
+    if [[ "$SELECTED_MONITORING" == "1" ]]; then
+      if systemctl list-unit-files --type=service --no-legend | grep -q '^node_exporter\.service'; then
+        check_service_active node_exporter "node_exporter"
+      else
+        log "${WARN} node_exporter not installed"; warnc=$((warnc+1))
+      fi
+    fi
+
+    if [[ "$SELECTED_BLINKSTICK" == "1" ]]; then
+      if command -v blinkstick >/dev/null 2>&1; then
+        log "${OK} BlinkStick CLI is available"
+        bs_blink green 1
+      else
+        log "${WARN} BlinkStick CLI not installed"; warnc=$((warnc+1))
+      fi
     fi
 
     # ---------- Overall status ----------
