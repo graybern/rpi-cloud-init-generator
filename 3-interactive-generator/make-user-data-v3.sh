@@ -59,6 +59,7 @@ if [[ "$INSTALL_K3S" =~ ^[Yy]$ ]]; then
     INSTALL_K3S="Y"; export INSTALL_K3S
     setup_kubernetes
     setup_argocd
+    generate_gitops_templates
 else
     INSTALL_K3S="N"; export INSTALL_K3S
     INSTALL_ARGOCD="N"; export INSTALL_ARGOCD

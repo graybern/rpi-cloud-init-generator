@@ -1,5 +1,78 @@
-- kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-- kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml -n argocd
+# --- INSTALL ARGOCD IN HA MODE ---
+# Create namespace for ArgoCD - ignore error if it already exists
+- kubectl create namespace argocd || true
+# Install ArgoCD in HA mode in the argocd namespace
+- kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/ha/install.yaml -n argocd
+# Wait for ArgoCD server pod to be ready
 - kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
-- kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"server.insecure":"true"}}'
-- kubectl -n argocd rollout restart deploy/argocd-server
+
+# --- CONFIGURE INGRESS ---
+# Configure ArgoCD for insecure mode (required for ingress)
+#- kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge -p '{"data":{"server.insecure":"true"}}'
+- kubectl -n argocd patch deploy argocd-server --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--insecure"}]'
+#
+# Give Traefik a TLS cert to terminate at the edge (self-signed for now)
+- openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+  -keyout argocd.octolet.int.key -out argocd.octolet.int.crt \
+  -subj "/CN=argocd.octolet.int"
+#
+# Create TLS secret for ArgoCD
+- kubectl -n argocd create secret tls argocd-tls-secret \
+  --cert=argocd.octolet.int.crt --key=argocd.octolet.int.key
+#
+# Create Ingress for ArgoCD
+- |
+  kubectl apply -f - <<EOF
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: argocd-server-ingress
+    namespace: argocd
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+  spec:
+    ingressClassName: traefik
+    tls:
+    - hosts:
+      - argocd.octolet.int
+      secretName: argocd-tls-secret
+    rules:
+    - host: argocd.octolet.int # TODO - make dynamic or user-defined
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: argocd-server
+              port:
+                number: 80
+  EOF
+# Restart ArgoCD server to apply insecure mode
+#- kubectl -n argocd rollout restart deployment argocd-server
+#
+# Wait for ArgoCD server to be ready
+- kubectl -n argocd rollout status deployment argocd-server --timeout=300s
+#
+# Get initial admin password (for reference/logging)
+- kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d ; echo
+# --- GITOPS BOOTSTRAP INSTRUCTIONS ---
+# After ArgoCD is running and repository access is configured, you need to:
+# 1. Create repository structure: environments/*/gitops/
+# 2. Add applications.yaml in each environment's gitops folder
+# 3. The ApplicationSet will automatically discover and deploy all environments
+# 4. Example structure:
+#    environments/
+#    ├── production/gitops/
+#    │   ├── applications.yaml
+#    │   └── apps/
+#    └── staging/gitops/
+#        ├── applications.yaml
+#        └── apps/
+#
+#
+# ORACLE CLOUD NOTE:
+# If this is Oracle Cloud, we need to open up iptables on all nodes for internal VCN traffic
+#sudo iptables -I INPUT 1 -s 10.0.101.0/24 -j ACCEPT
+#sudo iptables -I OUTPUT 1 -d 10.0.101.0/24 -j ACCEPT

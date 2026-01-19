@@ -70,10 +70,26 @@
     fi
 
     if [[ "$SELECTED_ARGOCD" == "1" ]]; then
-      if systemctl list-unit-files --type=service --no-legend | grep -q '^argocd-server\.service'; then
-        check_service_active argocd-server "argocd-server"
+      if command -v kubectl >/dev/null 2>&1; then
+        if kubectl get namespace argocd >/dev/null 2>&1; then
+          argocd_status=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server --no-headers 2>/dev/null | awk '{print $3}' | head -1)
+          appset_status=$(kubectl get applicationsets -n argocd environments-appset --no-headers 2>/dev/null | awk '{print $2}' | head -1)
+          if [[ "$argocd_status" == "Running" ]]; then
+            log "${OK} ArgoCD Server: Running"
+            if [[ -n "$appset_status" ]]; then
+              log "${OK} ApplicationSet: $appset_status environments discovered"
+            else
+              log "${WARN} ApplicationSet not found - GitOps automation not active"
+              warnc=$((warnc+1))
+            fi
+          else
+            log "${ERR} ArgoCD Server: $argocd_status"; ok=false; errc=$((errc+1)); bs_blink red 1
+          fi
+        else
+          log "${WARN} ArgoCD namespace not found"; warnc=$((warnc+1))
+        fi
       else
-        log "${WARN} ArgoCD not installed"; warnc=$((warnc+1))
+        log "${WARN} kubectl not available - cannot check ArgoCD"; warnc=$((warnc+1))
       fi
     fi
 
