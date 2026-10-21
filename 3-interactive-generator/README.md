@@ -7,10 +7,11 @@ This project provides an interactive shell script to generate `cloud-init` `user
 - **Interactive Setup**: User-friendly prompts guide you through the configuration.
 - **Core System Setup**: Configure hostname, SSH keys, and password authentication.
 - **Kubernetes (k3s)**: Install k3s and configure it as a `first-control`, `additional-control`, or `worker` node.
-- **ArgoCD**: Automatically install ArgoCD for GitOps workflows.
-- **Monitoring**: Set up Node Exporter for Prometheus metrics.
+- **ArgoCD** (first-control only): Install ArgoCD HA behind a Traefik ingress, register a Git repo (GitHub App, SSH deploy key, or public HTTPS), and create an ApplicationSet that auto-discovers `environments/*/gitops` in that repo.
+- **Monitoring**: Install the latest Prometheus node_exporter release (ARM64) as a systemd service. Offered for every node type.
 - **Networking**: Install Twingate for secure, zero-trust remote access.
 - **Hardware Support**: Optional installation of BlinkStick LED support for status indicators.
+- **Provisioning Report**: Always included. At the end of first boot, `/usr/local/sbin/provision-report.sh` checks each selected component and prints a pass/fail summary (also saved to `/run/provision-report.txt`).
 - **Modular & Extendable**: Easily add new components by creating new scripts in the `lib` and `templates` directories.
 
 ## Prerequisites
@@ -34,7 +35,31 @@ This project provides an interactive shell script to generate `cloud-init` `user
 
 3.  Answer the interactive prompts to select the components and settings for your node.
 
-4.  Once complete, the script will generate a `user-data` file in a timestamped subdirectory inside `output/`.
+4.  Once complete, the script will generate a `user-data` file at `output/<UTC-timestamp>_<role>-<hostname>/user-data`. Run the script from this directory: the output path is relative to your current directory.
+
+> ⚠️ The generated file contains plaintext secrets (k3s token, Twingate tokens, GitHub App or SSH private key, password hash). `output/` is gitignored. Keep it that way.
+
+### k3s roles
+
+- **first-control**: generates a new cluster token (`openssl rand -hex 32`) and runs `server --cluster-init`. Copy the token out of the generated `user-data` to join other nodes.
+- **additional-control**: prompts for the server URL and token, then joins as another server.
+- **worker**: prompts for the server URL and token, then joins as an agent.
+
+### ArgoCD GitOps layout
+
+When ArgoCD is enabled with a repo URL, the ApplicationSet `environments-appset` creates one Application per directory matching `environments/*/gitops` (named `<env>-env`), with automated sync, prune, and self-heal:
+
+```
+environments/
+├── production/gitops/
+│   ├── applications.yaml
+│   └── apps/
+└── staging/gitops/
+    ├── applications.yaml
+    └── apps/
+```
+
+The ArgoCD UI is published at `argocd.octolet.int` with a self-signed cert. That hostname is hard-coded for now (see [TODO.md](../TODO.md)).
 
 ## Flashing the Image & Booting the Pi
 
@@ -83,6 +108,7 @@ The project is organized to be modular and easy to understand.
 3-interactive-generator/
 ├── make-user-data-v3.sh      # Main executable script
 ├── README.md                 # This documentation
+├── output/                   # Generated user-data (gitignored)
 ├── lib/                      # Reusable shell functions for each component
 │   ├── argocd.sh
 │   ├── blinkstick.sh
@@ -103,6 +129,7 @@ The project is organized to be modular and easy to understand.
     │   └── twingate.yaml
     └── write_files/
         ├── blinkstick.yaml
+        ├── monitoring.yaml
         └── provision-report.yaml
 ```
 
@@ -131,3 +158,7 @@ The script's modular design makes it easy to add support for new software or cus
         runcmd+=$(get_mycooltool_config)
     fi
     ```
+
+## Known Issues
+
+See [TODO.md](../TODO.md). Most notably, the Twingate access and refresh tokens are swapped in `templates/runcmd/twingate.yaml`, and the node_exporter `runcmd` steps don't share shell variables. Fix both before relying on those components.
