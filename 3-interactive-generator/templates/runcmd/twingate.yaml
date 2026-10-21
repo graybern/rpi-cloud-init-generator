@@ -1,8 +1,8 @@
 - >
   curl "https://binaries.twingate.com/connector/setup.sh" | sudo
   TWINGATE_NETWORK="__TW_NET__"
-  TWINGATE_ACCESS_TOKEN="__TW_RT__"
-  TWINGATE_REFRESH_TOKEN="__TW_AT__"
+  TWINGATE_ACCESS_TOKEN="__TW_AT__"
+  TWINGATE_REFRESH_TOKEN="__TW_RT__"
   TWINGATE_LOG_ANALYTICS="v2"
   TWINGATE_LABEL_DEPLOYED_BY="cloud-init"
   TWINGATE_LABEL_HOSTNAME="`hostname`"

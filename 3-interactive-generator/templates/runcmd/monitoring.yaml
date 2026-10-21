@@ -1,28 +1,16 @@
-# Set base URL for latest node_exporter release
-- [
-    bash,
-    -c,
-    "BASE='https://github.com/prometheus/node_exporter/releases/latest'",
-  ]
-# Find the correct tarball name for ARM64
-- [
-    bash,
-    -c,
-    "ASSET=$(curl -fsSL $BASE/download/sha256sums.txt | awk '/linux-arm64\\.tar\\.gz/ {print $2; exit}')",
-  ]
-# Extract directory name from tarball name
-- [bash, -c, 'DIR="${ASSET%.tar.gz}"']
-# Download the tarball
-- [bash, -c, "curl -fL -o $ASSET $BASE/download/$ASSET"]
-# Extract the tarball
-- [bash, -c, "tar xvfz $ASSET"]
-# Move the binary to /usr/local/bin (system-wide executables)
-- [bash, -c, "mv $DIR/node_exporter /usr/local/bin/"]
+# Install the latest node_exporter release (ARM64). Single block so shell variables persist.
+- |
+  set -eu
+  cd /tmp
+  BASE='https://github.com/prometheus/node_exporter/releases/latest'
+  # Find the correct tarball name for ARM64
+  ASSET=$(curl -fsSL "$BASE/download/sha256sums.txt" | awk '/linux-arm64\.tar\.gz/ {print $2; exit}')
+  DIR="${ASSET%.tar.gz}"
+  curl -fL -o "$ASSET" "$BASE/download/$ASSET"
+  tar xzf "$ASSET"
+  mv "$DIR/node_exporter" /usr/local/bin/
+  rm -rf "$ASSET" "$DIR"
 # Create a system user for node_exporter (no login shell)
 - [bash, -c, "useradd -rs /bin/false node_exporter || true"]
-# Reload systemd to recognize new/changed service files
-- [bash, -c, "systemctl daemon-reload"]
-# Enable node_exporter to start at boot
-- [bash, -c, "systemctl enable node_exporter"]
-# Start node_exporter service now
-- [bash, -c, "systemctl start node_exporter"]
+# Enable and start node_exporter (unit file is in write_files)
+- [bash, -c, "systemctl daemon-reload && systemctl enable --now node_exporter"]

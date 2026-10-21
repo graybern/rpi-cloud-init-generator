@@ -16,7 +16,7 @@ Tools for generating cloud-init `user-data` files that provision Raspberry Pi no
 - `lib/<component>.sh`: `setup_<component>` handles the prompts and sets `INSTALL_<COMPONENT>`. `get_<component>_runcmd` and `get_<component>_write_files` read the templates, indent them by two spaces and substitute `__PLACEHOLDER__` tokens.
 - `lib/cloud-init-generator.sh`: does the assembly. It fills `templates/cloud-init-base.yaml`, then appends `write_files:` and `runcmd:` in this fixed order: blinkstick → k3s → argocd → twingate → monitoring → provision-report.
 - The provision report is always included. `/etc/provision-selections.env` records the chosen components, and `/usr/local/sbin/provision-report.sh` checks them at the end of first boot.
-- ArgoCD is offered only when the k3s role is `first-control`. Repo auth can be `github-app`, `ssh` or `https-public`. It creates an ApplicationSet that finds `environments/*/gitops` in the repo.
+- ArgoCD is offered only when the k3s role is `first-control`. Repo auth can be `github-app`, `ssh`, `https-token` or `https-public`. It creates an ApplicationSet that finds `environments/*/gitops` in the repo.
 
 To add a component, follow the "How It Works & Extending" section of `3-interactive-generator/README.md`.
 
@@ -24,7 +24,7 @@ To add a component, follow the "How It Works & Extending" section of `3-interact
 
 - Bash with `set -euo pipefail`. Keep to the existing `ask` / `ask_secret` helpers in `lib/helpers.sh`.
 - Template lines are indented by the `get_*` functions, so write templates at column 0.
-- Each `runcmd` list item runs in its own shell. Variables don't carry over between items (see TODO.md).
+- Each `runcmd` list item runs in its own shell, so variables don't carry over between items. When steps share variables, put them in one `- |` block (see `templates/runcmd/monitoring.yaml`).
 - Lint with `shellcheck` (installed in the devcontainer). The generator runs `yamllint -d relaxed` on its output when `yamllint` is available.
 
 ## Secrets
@@ -37,4 +37,4 @@ There are no GitHub Actions workflows, so pushing doesn't trigger anything.
 
 ## Open work
 
-See `TODO.md`. It lists known bugs, including swapped Twingate tokens and a broken node_exporter install.
+See `TODO.md`.

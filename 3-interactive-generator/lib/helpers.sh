@@ -39,7 +39,7 @@ slug() {
 
 # Create output directory
 setup_output_dir() {
-    OUT_BASE="${OUT_BASE:-./output}"
+    OUT_BASE="${OUT_BASE:-$SCRIPT_DIR/output}"
     STAMP="$(TZ=UTC date +'%Y-%m-%dT%H-%M-%SZ')"
     ROLE_SLUG="$(slug "$ROLE")"
     HOST_SLUG="$(slug "$HOSTNAME")"

@@ -7,7 +7,7 @@ This project provides an interactive shell script to generate `cloud-init` `user
 - **Interactive Setup**: User-friendly prompts guide you through the configuration.
 - **Core System Setup**: Configure hostname, SSH keys, and password authentication.
 - **Kubernetes (k3s)**: Install k3s and configure it as a `first-control`, `additional-control`, or `worker` node.
-- **ArgoCD** (first-control only): Install ArgoCD HA behind a Traefik ingress, register a Git repo (GitHub App, SSH deploy key, or public HTTPS), and create an ApplicationSet that auto-discovers `environments/*/gitops` in that repo.
+- **ArgoCD** (first-control only): Install ArgoCD HA behind a Traefik ingress, register a Git repo (GitHub App, SSH deploy key, HTTPS username + token, or public HTTPS), and create an ApplicationSet that auto-discovers `environments/*/gitops` in that repo.
 - **Monitoring**: Install the latest Prometheus node_exporter release (ARM64) as a systemd service. Offered for every node type.
 - **Networking**: Install Twingate for secure, zero-trust remote access.
 - **Hardware Support**: Optional installation of BlinkStick LED support for status indicators.
@@ -35,7 +35,7 @@ This project provides an interactive shell script to generate `cloud-init` `user
 
 3.  Answer the interactive prompts to select the components and settings for your node.
 
-4.  Once complete, the script will generate a `user-data` file at `output/<UTC-timestamp>_<role>-<hostname>/user-data`. Run the script from this directory: the output path is relative to your current directory.
+4.  Once complete, the script will generate a `user-data` file at `output/<UTC-timestamp>_<role>-<hostname>/user-data`. Override the location with `OUT_BASE=/some/dir`.
 
 > ⚠️ The generated file contains plaintext secrets (k3s token, Twingate tokens, GitHub App or SSH private key, password hash). `output/` is gitignored. Keep it that way.
 
@@ -161,4 +161,4 @@ The script's modular design makes it easy to add support for new software or cus
 
 ## Known Issues
 
-See [TODO.md](../TODO.md). Most notably, the Twingate access and refresh tokens are swapped in `templates/runcmd/twingate.yaml`, and the node_exporter `runcmd` steps don't share shell variables. Fix both before relying on those components.
+See [TODO.md](../TODO.md).

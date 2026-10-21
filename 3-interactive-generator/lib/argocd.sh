@@ -13,7 +13,7 @@ setup_argocd() {
             
             # Ask for authentication method
             echo "Select authentication method:"
-            select ARGOCD_AUTH_METHOD in "github-app" "ssh" "https-public"; do
+            select ARGOCD_AUTH_METHOD in "github-app" "ssh" "https-token" "https-public"; do
                 [[ -n "${ARGOCD_AUTH_METHOD:-}" ]] && break
             done
             
@@ -40,9 +40,14 @@ setup_argocd() {
                     fi
                     export SSH_PRIVATE_KEY
                     ;;
+                "https-token")
+                    GITHUB_USERNAME=$(ask "Git username")
+                    GITHUB_TOKEN=$(ask_secret "Personal access token")
+                    export GITHUB_USERNAME GITHUB_TOKEN
+                    ;;
                 "https-public")
                     echo "Note: This method is for public repositories only"
-                    echo "For private repos, use 'github-app' or 'ssh' authentication."
+                    echo "For private repos, use 'github-app', 'ssh' or 'https-token' authentication."
                     echo "Press Enter to continue with public repo access..."
                     read -r
                     ;;

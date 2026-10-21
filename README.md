@@ -5,7 +5,7 @@ This project provides a collection of tools to provision Raspberry Pi nodes usin
 Nodes can be set up with any combination of:
 
 - **k3s** (first control plane, additional control plane, or worker)
-- **ArgoCD HA** with GitHub App, SSH, or public-repo access, bootstrapped with an ApplicationSet for GitOps
+- **ArgoCD HA** with GitHub App, SSH, HTTPS token, or public-repo access, bootstrapped with an ApplicationSet for GitOps
 - **Twingate Connector**
 - **Prometheus node_exporter**
 - **BlinkStick** USB LED status indicators
